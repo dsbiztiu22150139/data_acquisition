@@ -1,0 +1,64 @@
+---
+title: "ウェブスクレイピング"
+author: "22150139 中村眞雨"
+date: "2024-06-04"
+output: html_document
+---
+
+```{r}
+DB  <- 'weather.duckdb'
+F.O <- 'weather.csv'
+
+site <- data.frame(
+  id   = 47662,
+  name = 'Tokyo')
+
+t.fr <- as.POSIXlt('2021-12-30')
+t.to <- as.POSIXlt('2022-01-01')
+ts   <- as.POSIXlt(seq(t.fr, t.to, by = 'days'))
+
+
+
+library(duckdb)
+con <- dbConnect(duckdb("test.duckdb"), DB)
+dbSendQuery(con, paste('DROP TABLE IF EXISTS', site$name))
+library(rvest)
+
+for (i in seq_along(ts))
+{
+  year <- 1900 + ts[i]$year
+  month <- 1 + ts[i]$mon
+  day <- ts[i]$mday
+
+url <- paste0('https://www.data.jma.go.jp/obd/stats/etrn/view/hourly_s1.php?prec_no=44&block_no=', site$id, '&year=', year, '&month=', month, '&day=', day, '&view=')
+
+cat('URL:', url, fill = T)
+
+tbl <- read_html(url) |> html_table()
+d0 <- as.data.frame(tbl[[5]])
+str(d0)
+colnames(d0)
+
+hour <- d0[-1, '時']
+datetime <- as.POSIXlt(paste(ts[i], hour), format = '%Y-%m-%d %H')
+
+sunshine <- as.double(d0[-1, 11])
+sunshine[is.na(sunshine)] <- 0.0
+
+d1 <- data.frame(site.id   = as.integer(site$id),
+                 site.name = site$name,
+                 datetime  = paste(datetime, '%Y-%m-%d %H;00'),
+                 temp      = as.double(d0[-1, 5]),
+                 humidity  = as.integer(d0[-1, 8]),
+                 sunshine  = sunshine,
+                 wind      = d0[-1, 10])
+
+try(dbWriteTable(con, site$name, d1, append = T))
+Sys.sleep(runif(1, min = 1, max = 2))
+}
+
+res <- dbSendQuery(con, 'SELECT * FROM Tokyo')
+dbFetch(res)
+dbClearResult(res)
+dbDisconnect(con, shutdown = T)
+```
